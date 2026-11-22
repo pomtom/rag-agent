@@ -1,0 +1,4 @@
+# Office and PDF files are binary: never change their line endings.
+*.pdf  binary
+*.docx binary
+*.xlsx binary

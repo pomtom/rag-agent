@@ -1,0 +1,45 @@
+<Project>
+  <!--
+    Central Package Management: every NuGet version lives HERE and only here.
+    The .csproj files just say <PackageReference Include="..." /> without a version.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup Label="AI - Microsoft.Extensions.AI (IChatClient, IEmbeddingGenerator) on top of the OpenAI SDK">
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.11.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.11.0" />
+    <!-- Entra ID sign-in to Microsoft Foundry when no API key is configured. -->
+    <PackageVersion Include="Azure.Identity" Version="1.21.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="MCP - Model Context Protocol (client + server)">
+    <PackageVersion Include="ModelContextProtocol" Version="2.4.0" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.4.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Database + file readers">
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.1.1" />
+    <!-- SqlClient 7.1.1 brings Pkcs 9.0.18, which has known vulnerabilities: use the patched 10.0 version. -->
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+    <PackageVersion Include="PdfPig" Version="0.1.16" />
+    <PackageVersion Include="DocumentFormat.OpenXml" Version="3.3.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Web UI">
+    <!-- Shows the bot's Markdown answers (lists, tables, bold) as HTML. -->
+    <PackageVersion Include="Markdig" Version="0.41.3" />
+  </ItemGroup>
+
+  <ItemGroup Label="Aspire service defaults (telemetry, health checks, resilience, service discovery)">
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.11.0" />
+    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.8.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.21.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.21.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.21.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.21.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.21.0" />
+  </ItemGroup>
+  <!-- Aspire itself comes from the SDK line in AgentRag.AppHost.csproj (Aspire.AppHost.Sdk/13.6.5). -->
+</Project>

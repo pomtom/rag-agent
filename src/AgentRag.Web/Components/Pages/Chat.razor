@@ -1,0 +1,157 @@
+@page "/"
+@inject RagApiClient Api
+
+@*
+    The chat window. The conversation lives in this page only (not in a database):
+    every question is sent to the API together with the earlier messages.
+    Under each answer: the document passages the bot used, and the tools it called.
+*@
+
+<PageTitle>Chat - Agent RAG</PageTitle>
+
+<div class="chat">
+    <div class="chat-log">
+        @if (entries.Count == 0)
+        {
+            <div class="empty">
+                <h2>Ask about your documents</h2>
+                <p class="hint">Upload files on the <a href="documents">Documents</a> page first. Try:</p>
+                <ul class="examples">
+                    @foreach (string example in examples)
+                    {
+                        <li><button class="link" @onclick="() => AskAsync(example)">@example</button></li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @foreach (ChatEntry entry in entries)
+        {
+            <div class="bubble @entry.Role @(entry.IsError ? "error" : "")">
+                @if (entry.Role == "assistant" && !entry.IsError)
+                {
+                    <div class="markdown">@MarkdownRenderer.ToHtml(entry.Text)</div>
+                }
+                else
+                {
+                    <div class="plain">@entry.Text</div>
+                }
+
+                @if (entry.Sources.Count > 0)
+                {
+                    <details class="sources">
+                        <summary>@entry.Sources.Count source(s)</summary>
+                        @foreach (ChatSourceDto source in entry.Sources)
+                        {
+                            <div class="source">
+                                <div class="source-title">[@source.Source] <span class="hint">distance @source.Distance.ToString("0.000")</span></div>
+                                <div class="source-text">@Shorten(source.Content)</div>
+                            </div>
+                        }
+                    </details>
+                }
+
+                @if (entry.ToolCalls.Count > 0)
+                {
+                    <div class="tool-calls">Tools: @string.Join("  ->  ", entry.ToolCalls)</div>
+                }
+            </div>
+        }
+
+        @if (isThinking)
+        {
+            <div class="bubble assistant thinking">Thinking...</div>
+        }
+    </div>
+
+    <form class="chat-input" @onsubmit="SendAsync">
+        <input @bind="question" @bind:event="oninput" placeholder="Ask a question about your documents..." disabled="@isThinking" />
+        <button class="primary" type="submit" disabled="@(isThinking || string.IsNullOrWhiteSpace(question))">Send</button>
+        @if (entries.Count > 0)
+        {
+            <button type="button" @onclick="Clear" disabled="@isThinking">New chat</button>
+        }
+    </form>
+</div>
+
+@code {
+    private readonly string[] examples = new string[]
+    {
+        "Summarize the return policy.",
+        "Compare standard and express shipping.",
+        "What does the warranty not cover?"
+    };
+
+    private readonly List<ChatEntry> entries = new List<ChatEntry>();
+    private string question = string.Empty;
+    private bool isThinking;
+
+    private async Task SendAsync()
+    {
+        await AskAsync(question);
+    }
+
+    private async Task AskAsync(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || isThinking)
+        {
+            return;
+        }
+
+        // The conversation so far (without error messages), sent along so the bot understands follow-up questions.
+        List<ChatTurnDto> history = entries
+            .Where(entry => !entry.IsError)
+            .Select(entry => new ChatTurnDto { Role = entry.Role, Text = entry.Text })
+            .ToList();
+
+        entries.Add(new ChatEntry { Role = "user", Text = text });
+        question = string.Empty;
+        isThinking = true;
+        StateHasChanged();
+
+        try
+        {
+            ChatAnswerDto answer = await Api.AskAsync(text, history, CancellationToken.None);
+            entries.Add(new ChatEntry
+            {
+                Role = "assistant",
+                Text = answer.Answer,
+                Sources = answer.Sources,
+                ToolCalls = answer.ToolCalls
+            });
+        }
+        catch (Exception ex)
+        {
+            entries.Add(new ChatEntry { Role = "assistant", Text = ex.Message, IsError = true });
+        }
+        finally
+        {
+            isThinking = false;
+        }
+    }
+
+    private void Clear()
+    {
+        entries.Clear();
+    }
+
+    private static string Shorten(string text)
+    {
+        const int maxLength = 400;
+        return text.Length <= maxLength ? text : text.Substring(0, maxLength) + "...";
+    }
+
+    // One message in the chat window.
+    private sealed class ChatEntry
+    {
+        public string Role { get; set; } = "user";
+
+        public string Text { get; set; } = string.Empty;
+
+        public bool IsError { get; set; }
+
+        public List<ChatSourceDto> Sources { get; set; } = new List<ChatSourceDto>();
+
+        public List<string> ToolCalls { get; set; } = new List<string>();
+    }
+}

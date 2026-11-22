@@ -1,0 +1,23 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.6.5">
+
+  <!--
+    .NET Aspire AppHost: starts the API and the web app together (F5 or `dotnet run`)
+    and opens the Aspire dashboard with the logs, traces and metrics of both.
+    No Docker: SQL Server is the one already installed on this machine.
+    (Do not use Aspire 13.6.0: its orchestrator hangs on Windows at "Starting DCP".)
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UserSecretsId>3f0b1c52-2a7e-4f0b-9d1c-6a1e8b7c4d21</UserSecretsId>
+    <!-- Aspire GENERATES code (the Projects.* classes) that needs a newer C# than 10. -->
+    <LangVersion>latest</LangVersion>
+    <!-- ASPIRE010: the optional Aspire CLI bundle; `dotnet run` works without it. -->
+    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgentRag.Api\AgentRag.Api.csproj" />
+    <ProjectReference Include="..\AgentRag.Web\AgentRag.Web.csproj" />
+  </ItemGroup>
+
+</Project>

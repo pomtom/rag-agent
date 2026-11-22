@@ -1,0 +1,15 @@
+<Project>
+  <!--
+    Settings shared by EVERY project.
+    LangVersion 10 on purpose: the code stays plain and easy to read
+    (no primary constructors, collection expressions, raw strings, required members).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>10</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- MEAI001 / OPENAI001: "experimental API" warnings from the AI packages. -->
+    <NoWarn>$(NoWarn);MEAI001;OPENAI001</NoWarn>
+  </PropertyGroup>
+</Project>

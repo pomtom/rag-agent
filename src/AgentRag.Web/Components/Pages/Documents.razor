@@ -1,0 +1,220 @@
+@page "/documents"
+@implements IDisposable
+@inject RagApiClient Api
+
+@*
+    Upload files and watch the background service process them:
+    Pending -> Processing -> Completed (or Failed, with the reason).
+    While something is still Pending/Processing, the list refreshes every 3 seconds.
+*@
+
+<PageTitle>Documents - Agent RAG</PageTitle>
+
+<h1>Documents</h1>
+<p class="hint">Supported: .txt, .md, .csv, .pdf, .docx, .xlsx (max 20 MB each). Embeddings are generated in the background.</p>
+
+<section class="card upload">
+    <InputFile OnChange="OnFilesSelected" multiple accept=".txt,.md,.csv,.pdf,.docx,.xlsx" disabled="@isUploading" />
+    <button class="primary" @onclick="UploadAsync" disabled="@(isUploading || selectedFiles.Count == 0)">
+        @(isUploading ? "Uploading..." : "Upload " + selectedFiles.Count + " file(s)")
+    </button>
+</section>
+
+@if (uploadMessages.Count > 0)
+{
+    <ul class="messages">
+        @foreach (UploadResultDto result in uploadMessages)
+        {
+            <li class="@(result.IsAccepted ? "ok" : "error")"><strong>@result.FileName</strong>: @result.Message</li>
+        }
+    </ul>
+}
+
+@if (errorMessage != null)
+{
+    <p class="error">@errorMessage</p>
+}
+
+@if (documents == null)
+{
+    <p>Loading...</p>
+}
+else if (documents.Count == 0)
+{
+    <p class="hint">No documents yet. Upload one above.</p>
+}
+else
+{
+    <table class="documents">
+        <thead>
+            <tr>
+                <th>File</th>
+                <th>Size</th>
+                <th>Status</th>
+                <th>Chunks</th>
+                <th>Uploaded</th>
+                <th>Processed</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (DocumentDto document in documents)
+            {
+                <tr>
+                    <td>@document.FileName</td>
+                    <td>@FormatSize(document.FileSizeBytes)</td>
+                    <td>
+                        <span class="status status-@document.Status.ToLowerInvariant()">@document.Status</span>
+                        @if (!string.IsNullOrEmpty(document.ErrorMessage))
+                        {
+                            <div class="error small">@document.ErrorMessage</div>
+                        }
+                    </td>
+                    <td>@document.ChunkCount</td>
+                    <td>@document.UploadedAt.ToLocalTime().ToString("g")</td>
+                    <td>@(document.ProcessedAt?.ToLocalTime().ToString("g") ?? "-")</td>
+                    <td class="actions">
+                        <button @onclick="() => ReprocessAsync(document.Id)" title="Generate the embeddings again">Reprocess</button>
+                        <button class="danger" @onclick="() => DeleteAsync(document.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private const int MaxFilesPerUpload = 20;
+
+    private List<DocumentDto>? documents;
+    private List<IBrowserFile> selectedFiles = new List<IBrowserFile>();
+    private List<UploadResultDto> uploadMessages = new List<UploadResultDto>();
+    private string? errorMessage;
+    private bool isUploading;
+
+    private readonly CancellationTokenSource pageClosed = new CancellationTokenSource();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _ = RefreshWhileProcessingAsync();   // runs in the background until the page is closed
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            documents = await Api.ListDocumentsAsync(pageClosed.Token);
+            errorMessage = null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            errorMessage = "Could not load the documents: " + ex.Message;
+        }
+    }
+
+    // Every 3 seconds: if a file is still Pending or Processing, load the list again.
+    private async Task RefreshWhileProcessingAsync()
+    {
+        using (PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromSeconds(3)))
+        {
+            try
+            {
+                while (await timer.WaitForNextTickAsync(pageClosed.Token))
+                {
+                    bool busy = documents != null && documents.Any(d => d.Status == "Pending" || d.Status == "Processing");
+                    if (busy)
+                    {
+                        await LoadAsync();
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // The page was closed.
+            }
+        }
+    }
+
+    private void OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        selectedFiles = e.GetMultipleFiles(MaxFilesPerUpload).ToList();
+        uploadMessages.Clear();
+    }
+
+    private async Task UploadAsync()
+    {
+        isUploading = true;
+        uploadMessages.Clear();
+
+        // One request per file: a failure in one file does not affect the others.
+        foreach (IBrowserFile file in selectedFiles)
+        {
+            try
+            {
+                if (file.Size > RagApiClient.MaxFileSizeBytes)
+                {
+                    uploadMessages.Add(new UploadResultDto { FileName = file.Name, Message = "The file is larger than 20 MB." });
+                    continue;
+                }
+
+                uploadMessages.Add(await Api.UploadAsync(file, pageClosed.Token));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                uploadMessages.Add(new UploadResultDto { FileName = file.Name, Message = ex.Message });
+            }
+
+            StateHasChanged();   // show each result as soon as it is known
+        }
+
+        selectedFiles.Clear();
+        isUploading = false;
+        await LoadAsync();
+    }
+
+    private async Task ReprocessAsync(int id)
+    {
+        await RunAndReloadAsync(() => Api.ReprocessAsync(id, pageClosed.Token));
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        await RunAndReloadAsync(() => Api.DeleteAsync(id, pageClosed.Token));
+    }
+
+    private async Task RunAndReloadAsync(Func<Task> action)
+    {
+        try
+        {
+            await action();
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024)
+        {
+            return bytes + " B";
+        }
+
+        if (bytes < 1024 * 1024)
+        {
+            return (bytes / 1024.0).ToString("0.#") + " KB";
+        }
+
+        return (bytes / 1024.0 / 1024.0).ToString("0.#") + " MB";
+    }
+
+    public void Dispose()
+    {
+        pageClosed.Cancel();
+        pageClosed.Dispose();
+    }
+}

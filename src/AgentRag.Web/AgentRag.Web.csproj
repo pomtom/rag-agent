@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    The user interface only (Blazor Server): upload documents, see their status, chat.
+    No AI SDK and no database here - every action is an HTTP call to AgentRag.Api (see RagApiClient.cs).
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\AgentRag.ServiceDefaults\AgentRag.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Markdig" />
+  </ItemGroup>
+
+</Project>
